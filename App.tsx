@@ -5,6 +5,8 @@ import MapDisplay from './components/MapDisplay';
 import ActionButtons from './components/ActionButtons';
 import VoiceOverlay from './components/VoiceOverlay';
 import ChatInterface from './components/ChatInterface';
+import ProfileMenu from './components/ProfileMenu';
+import QuickSuggestions, { Suggestion } from './components/QuickSuggestions';
 import { UserProfile, LocationData } from './types';
 import { GoogleGenAI, Type } from "@google/genai";
 
@@ -44,15 +46,59 @@ const App: React.FC = () => {
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [isVoiceActive, setIsVoiceActive] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [initialChatPrompt, setInitialChatPrompt] = useState<string | undefined>(undefined);
   
-  // Discovery Mode State
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [isSuggestionsLoading, setIsSuggestionsLoading] = useState(false);
+  const lastSuggestionCity = useRef<string | null>(null);
+
   const [isDiscoveryMode, setIsDiscoveryMode] = useState(false);
   const [selectedPOI, setSelectedPOI] = useState<POIData | null>(null);
   const [isIdentifyingPOI, setIsIdentifyingPOI] = useState(false);
 
   const [chatMessages, setChatMessages] = useState<Message[]>([]);
   const lastAiGeocodeCoords = useRef<{ lat: number; lng: number } | null>(null);
+
+  const fetchQuickSuggestions = async (city: string, country: string) => {
+    if (lastSuggestionCity.current === city) return;
+    setIsSuggestionsLoading(true);
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: `Provide 2 short, diverse travel suggestions for things to do or places to visit near ${city}, ${country}. Include an emoji icon for each.`,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              suggestions: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    title: { type: Type.STRING },
+                    category: { type: Type.STRING },
+                    icon: { type: Type.STRING },
+                    description: { type: Type.STRING }
+                  },
+                  required: ["title", "category", "icon", "description"]
+                }
+              }
+            }
+          }
+        }
+      });
+      const result = JSON.parse(response.text || '{"suggestions": []}');
+      setSuggestions(result.suggestions);
+      lastSuggestionCity.current = city;
+    } catch (err) {
+      console.error('Failed to fetch suggestions:', err);
+    } finally {
+      setIsSuggestionsLoading(false);
+    }
+  };
 
   const reverseGeocode = async (lat: number, lng: number) => {
     try {
@@ -76,6 +122,7 @@ const App: React.FC = () => {
       const result = JSON.parse(response.text || '{}');
       if (result.city && result.country) {
         setLocation({ city: result.city, country: result.country, isLocating: false, error: null });
+        fetchQuickSuggestions(result.city, result.country);
       }
     } catch (err) {
       console.error('AI Geocoding failed:', err);
@@ -91,7 +138,7 @@ const App: React.FC = () => {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `Identify the specific point of interest or major landmark at exactly latitude ${poi.lat}, longitude ${poi.lng} in ${location.city}, ${location.country}. Provide high-quality details including rating, opening status, and descriptive images (use high-quality representative Unsplash source URLs based on keywords if real URLs are unavailable).`,
+        contents: `Identify the specific point of interest or major landmark at exactly latitude ${poi.lat}, longitude ${poi.lng} in ${location.city}, ${location.country}. Provide high-quality details including rating, opening status, and descriptive images.`,
         config: {
           tools: [{ googleSearch: {} }],
           responseMimeType: "application/json",
@@ -104,11 +151,10 @@ const App: React.FC = () => {
               address: { type: Type.STRING },
               rating: { type: Type.NUMBER },
               user_ratings_total: { type: Type.INTEGER },
-              opening_hours: { type: Type.STRING, description: "Current status, e.g., 'Open until 10 PM' or 'Closed'" },
+              opening_hours: { type: Type.STRING },
               imageUrls: { 
                 type: Type.ARRAY, 
-                items: { type: Type.STRING },
-                description: "Array of 3-4 high-quality image URLs of the location."
+                items: { type: Type.STRING }
               }
             },
             required: ["name", "type", "description", "address", "rating", "imageUrls"]
@@ -145,9 +191,13 @@ const App: React.FC = () => {
 
   return (
     <div className="flex flex-col h-screen max-w-md mx-auto bg-zinc-50 relative overflow-hidden">
-      <Header user={user} location={location} />
+      <Header 
+        user={user} 
+        location={location} 
+        onProfileClick={() => setIsProfileOpen(true)}
+      />
 
-      <main className="flex-1 flex flex-col justify-center overflow-hidden relative">
+      <main className="flex-1 flex flex-col overflow-hidden relative">
         <MapDisplay 
           coords={coords} 
           isDiscoveryMode={isDiscoveryMode}
@@ -155,11 +205,18 @@ const App: React.FC = () => {
           onPOISelect={identifyPOI}
         />
 
-        {/* POI Info Card Overlay */}
+        <QuickSuggestions 
+          suggestions={suggestions} 
+          isLoading={isSuggestionsLoading}
+          onSelect={(s) => {
+            setInitialChatPrompt(`Tell me about ${s.title} in ${location.city}.`);
+            setIsChatOpen(true);
+          }}
+        />
+
         {selectedPOI && (
-          <div className="absolute bottom-6 left-6 right-6 z-50 animate-in slide-in-from-bottom-10 duration-500">
-            <div className="bg-white rounded-[2.5rem] p-5 shadow-2xl border border-zinc-100 flex flex-col gap-4 overflow-hidden">
-              {/* Header Section */}
+          <div className="absolute inset-x-6 bottom-4 z-50 animate-in slide-in-from-bottom-10 duration-500">
+            <div className="bg-white rounded-[2.5rem] p-5 shadow-2xl border border-zinc-100 flex flex-col gap-4 overflow-hidden max-h-[70vh]">
               <div className="flex justify-between items-start">
                 <div className="flex flex-col gap-0.5 overflow-hidden">
                   {isIdentifyingPOI ? (
@@ -181,69 +238,46 @@ const App: React.FC = () => {
                 </button>
               </div>
 
-              {/* Image Carousel */}
               {!isIdentifyingPOI && selectedPOI.imageUrls && selectedPOI.imageUrls.length > 0 && (
-                <div className="flex gap-2 overflow-x-auto pb-1 -mx-5 px-5 scrollbar-hide no-scrollbar">
+                <div className="flex gap-2 overflow-x-auto pb-1 -mx-5 px-5 scrollbar-hide no-scrollbar flex-none">
                   {selectedPOI.imageUrls.map((url, i) => (
                     <div key={i} className="flex-none w-48 h-32 rounded-2xl overflow-hidden bg-zinc-100 border border-zinc-100">
-                      <img src={url} alt={`${selectedPOI.name} ${i}`} className="w-full h-full object-cover" />
+                      <img src={url} alt="" className="w-full h-full object-cover" />
                     </div>
                   ))}
                 </div>
               )}
 
-              {/* Rich Metadata Section */}
               {!isIdentifyingPOI && (
                 <div className="flex flex-wrap items-center gap-3">
                   {selectedPOI.rating && (
                     <div className="flex items-center gap-1 bg-amber-50 px-2 py-1 rounded-lg border border-amber-100">
                       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 text-amber-500">
-                        <path fillRule="evenodd" d="M10.868 2.884c-.321-.772-1.415-.772-1.736 0l-1.83 4.401-4.753.381c-.833.067-1.171 1.107-.536 1.651l3.62 3.102-1.106 4.637c-.194.813.691 1.456 1.405 1.02L10 15.591l4.069 2.485c.713.436 1.598-.207 1.404-1.02l-1.106-4.637 3.62-3.102c.635-.544.297-1.584-.536-1.65l-4.752-.382-1.831-4.401Z" clipRule="evenodd" />
+                        <path fillRule="evenodd" d="M10.868 2.884c-.321-.772-1.415-.772-1.736 0l-1.83 4.401-4.753.381c-.833.067-1.171 1.107-.536 1.651l3.62 3.102-1.106 4.637c-.194.813.691 1.456 1.405 1.02L10 15.591l4.069 2.485c.713.436 1.598-.207 1.404-1.02l-1.106-4.637 3.62-3.102c.635-.544.297-1.584-.536-1.65l-4.752-.382-1.831-4.401Z" />
                       </svg>
                       <span className="text-[11px] font-black text-amber-700">{selectedPOI.rating}</span>
-                      {selectedPOI.user_ratings_total && (
-                        <span className="text-[10px] text-amber-600/70 font-bold">({selectedPOI.user_ratings_total.toLocaleString()})</span>
-                      )}
                     </div>
                   )}
                   {selectedPOI.opening_hours && (
-                    <div className={`px-2 py-1 rounded-lg border text-[11px] font-black uppercase tracking-tight ${
-                      selectedPOI.opening_hours.toLowerCase().includes('open') 
-                      ? 'bg-emerald-50 border-emerald-100 text-emerald-700' 
-                      : 'bg-zinc-50 border-zinc-100 text-zinc-500'
-                    }`}>
+                    <div className="bg-emerald-50 border border-emerald-100 text-emerald-700 px-2 py-1 rounded-lg text-[10px] font-black uppercase">
                       {selectedPOI.opening_hours}
-                    </div>
-                  )}
-                  {selectedPOI.address && (
-                    <div className="flex items-center gap-1 text-zinc-400">
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
-                        <path fillRule="evenodd" d="m9.69 18.933.003.001C9.89 19.02 10 19 10 19s.11.02.308-.066l.002-.001.006-.003.018-.008a5.741 5.741 0 0 0 .281-.14c.186-.096.446-.24.757-.433.62-.384 1.445-.966 2.274-1.765C15.302 14.988 17 12.493 17 9A7 7 0 1 0 3 9c0 3.492 1.698 5.988 3.355 7.584a13.731 13.731 0 0 0 2.273 1.765 7.23 7.23 0 0 0 .757.433 5.73 5.73 0 0 0 .281.14l.018.008.006.003ZM10 11.25a2.25 2.25 0 1 0 0-4.5 2.25 2.25 0 0 0 0 4.5Z" clipRule="evenodd" />
-                      </svg>
-                      <span className="text-[10px] font-bold truncate max-w-[120px]">{selectedPOI.address}</span>
                     </div>
                   )}
                 </div>
               )}
 
-              {!isIdentifyingPOI && selectedPOI.description && (
-                <p className="text-xs text-zinc-500 leading-relaxed font-medium line-clamp-2">
-                  {selectedPOI.description}
-                </p>
-              )}
-
-              <div className="flex gap-2 pt-1">
+              <div className="flex gap-2 pt-1 flex-none">
                 <button 
                   onClick={() => {
                     setInitialChatPrompt(`Tell me more about ${selectedPOI.name} in ${location.city}.`);
                     setIsChatOpen(true);
                   }}
-                  className="flex-1 py-3.5 bg-zinc-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl active:scale-95 transition-all"
+                  className="flex-1 py-3.5 bg-zinc-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl"
                 >
                   Explore with AI
                 </button>
                 <button 
-                  className="px-6 py-3.5 bg-zinc-100 text-zinc-900 rounded-2xl text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all hover:bg-zinc-200"
+                  className="px-6 py-3.5 bg-zinc-100 text-zinc-900 rounded-2xl text-[10px] font-black uppercase tracking-widest"
                   onClick={() => {
                     setSelectedPOI(null);
                     setIsDiscoveryMode(false);
@@ -271,6 +305,13 @@ const App: React.FC = () => {
           onClose={() => { setIsChatOpen(false); setInitialChatPrompt(undefined); }}
           messages={chatMessages}
           setMessages={setChatMessages}
+        />
+      )}
+
+      {isProfileOpen && (
+        <ProfileMenu 
+          user={user}
+          onClose={() => setIsProfileOpen(false)}
         />
       )}
     </div>
