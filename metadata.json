@@ -1,0 +1,9 @@
+{
+  "name": "RoamAi",
+  "description": "A minimal, clean travel companion app designed for real-time location-based advice and seamless voice or text interaction.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}
