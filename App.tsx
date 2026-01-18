@@ -6,15 +6,10 @@ import ActionButtons from './components/ActionButtons';
 import VoiceOverlay from './components/VoiceOverlay';
 import ChatInterface from './components/ChatInterface';
 import ProfileMenu from './components/ProfileMenu';
+import SettingsMenu from './components/SettingsMenu';
 import QuickSuggestions, { Suggestion } from './components/QuickSuggestions';
-import { UserProfile, LocationData } from './types';
+import { UserProfile, LocationData, Message, ChatSession } from './types';
 import { GoogleGenAI, Type } from "@google/genai";
-
-export interface Message {
-  role: 'user' | 'assistant';
-  text: string;
-  links?: { title: string; url: string }[];
-}
 
 export interface POIData {
   name: string;
@@ -43,10 +38,14 @@ const App: React.FC = () => {
     error: null
   });
 
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [showBackOnline, setShowBackOnline] = useState(false);
+
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [isVoiceActive, setIsVoiceActive] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [initialChatPrompt, setInitialChatPrompt] = useState<string | undefined>(undefined);
   
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
@@ -58,10 +57,39 @@ const App: React.FC = () => {
   const [isIdentifyingPOI, setIsIdentifyingPOI] = useState(false);
 
   const [chatMessages, setChatMessages] = useState<Message[]>([]);
+  const [chatHistory] = useState<ChatSession[]>([
+    {
+      id: '1',
+      title: 'Historical Tour of State College',
+      snippet: 'What are the oldest buildings in the university area?',
+      date: 'Oct 24, 2023',
+      messages: [
+        { role: 'user', text: 'What are the oldest buildings in the university area?' },
+        { role: 'assistant', text: 'The oldest building is Old Main, completed in 1863. It remains the centerpiece of the campus today.' }
+      ]
+    },
+    {
+      id: '2',
+      title: 'Lunch in San Francisco',
+      snippet: 'Recommend a good sushi place near Market St.',
+      date: 'Oct 20, 2023',
+      messages: [
+        { role: 'user', text: 'Recommend a good sushi place near Market St.' },
+        { role: 'assistant', text: 'I recommend Akiko’s Restaurant. It’s highly rated for its authentic experience and fresh omakase.' }
+      ]
+    }
+  ]);
+
   const lastAiGeocodeCoords = useRef<{ lat: number; lng: number } | null>(null);
 
+  const handleSelectHistoryChat = (session: ChatSession) => {
+    setChatMessages(session.messages);
+    setIsProfileOpen(false);
+    setIsChatOpen(true);
+  };
+
   const fetchQuickSuggestions = async (city: string, country: string) => {
-    if (lastSuggestionCity.current === city) return;
+    if (lastSuggestionCity.current === city || !navigator.onLine) return;
     setIsSuggestionsLoading(true);
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -101,6 +129,7 @@ const App: React.FC = () => {
   };
 
   const reverseGeocode = async (lat: number, lng: number) => {
+    if (!navigator.onLine) return;
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const response = await ai.models.generateContent({
@@ -131,6 +160,7 @@ const App: React.FC = () => {
   };
 
   const identifyPOI = async (poi: POIData) => {
+    if (!navigator.onLine) return;
     setIsIdentifyingPOI(true);
     setSelectedPOI(poi);
 
@@ -173,6 +203,17 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      setShowBackOnline(true);
+      setTimeout(() => setShowBackOnline(false), 3000);
+      if (coords) reverseGeocode(coords.lat, coords.lng);
+    };
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
     if (!navigator.geolocation) return;
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
@@ -186,8 +227,12 @@ const App: React.FC = () => {
       () => setLocation(prev => ({ ...prev, isLocating: false, error: 'Location Access Denied' })),
       { enableHighAccuracy: true }
     );
-    return () => navigator.geolocation.clearWatch(watchId);
-  }, []);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      navigator.geolocation.clearWatch(watchId);
+    };
+  }, [coords]);
 
   return (
     <div className="flex flex-col h-screen max-w-md mx-auto bg-zinc-50 relative overflow-hidden">
@@ -196,6 +241,26 @@ const App: React.FC = () => {
         location={location} 
         onProfileClick={() => setIsProfileOpen(true)}
       />
+
+      {/* Connectivity Status Banner */}
+      <div className={`transition-all duration-500 overflow-hidden flex-none z-[5] ${!isOnline || showBackOnline ? 'max-h-12' : 'max-h-0'}`}>
+        {showBackOnline ? (
+          <div className="bg-emerald-500 text-white py-2 px-6 flex items-center justify-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+              <path fillRule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm3.857-9.809a.75.75 0 0 0-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 1 0-1.06 1.061l2.5 2.5a.75.75 0 0 0 1.137-.089l4-5.5Z" clipRule="evenodd" />
+            </svg>
+            <span className="text-[10px] font-black uppercase tracking-widest">Back Online</span>
+          </div>
+        ) : (
+          <div className="bg-zinc-900 text-white py-2 px-6 flex items-center justify-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 text-zinc-400">
+              <path d="M10.323 11.23a.75.75 0 0 1-1.06 0l-2.47-2.47a.75.75 0 0 1 1.06-1.06l1.94 1.94 1.94-1.94a.75.75 0 1 1 1.06 1.06l-2.47 2.47Z" />
+              <path fillRule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm-4.28-9.72a.75.75 0 0 0 0 1.06l4.28 4.28 4.28-4.28a.75.75 0 1 0-1.06-1.06L10 12.69 6.78 9.47a.75.75 0 0 0-1.06 0Z" clipRule="evenodd" />
+            </svg>
+            <span className="text-[10px] font-black uppercase tracking-widest text-zinc-300">No Connection</span>
+          </div>
+        )}
+      </div>
 
       <main className="flex-1 flex flex-col overflow-hidden relative">
         <MapDisplay 
@@ -210,6 +275,7 @@ const App: React.FC = () => {
           isLoading={isSuggestionsLoading}
           onSelect={(s) => {
             setInitialChatPrompt(`Tell me about ${s.title} in ${location.city}.`);
+            setChatMessages([]); 
             setIsChatOpen(true);
           }}
         />
@@ -270,6 +336,7 @@ const App: React.FC = () => {
                 <button 
                   onClick={() => {
                     setInitialChatPrompt(`Tell me more about ${selectedPOI.name} in ${location.city}.`);
+                    setChatMessages([]);
                     setIsChatOpen(true);
                   }}
                   className="flex-1 py-3.5 bg-zinc-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl"
@@ -293,10 +360,10 @@ const App: React.FC = () => {
 
       <ActionButtons 
         onVoiceClick={() => setIsVoiceActive(true)}
-        onChatClick={() => setIsChatOpen(true)}
+        onChatClick={() => { setChatMessages([]); setInitialChatPrompt(undefined); setIsChatOpen(true); }}
       />
       
-      {isVoiceActive && <VoiceOverlay onComplete={(t) => { setIsVoiceActive(false); setInitialChatPrompt(t); setIsChatOpen(true); }} onCancel={() => setIsVoiceActive(false)} />}
+      {isVoiceActive && <VoiceOverlay onComplete={(t) => { setIsVoiceActive(false); setChatMessages([]); setInitialChatPrompt(t); setIsChatOpen(true); }} onCancel={() => setIsVoiceActive(false)} />}
 
       {isChatOpen && (
         <ChatInterface 
@@ -312,6 +379,18 @@ const App: React.FC = () => {
         <ProfileMenu 
           user={user}
           onClose={() => setIsProfileOpen(false)}
+          onOpenSettings={() => {
+            setIsSettingsOpen(true);
+            setIsProfileOpen(false);
+          }}
+          chatHistory={chatHistory}
+          onSelectChat={handleSelectHistoryChat}
+        />
+      )}
+
+      {isSettingsOpen && (
+        <SettingsMenu 
+          onClose={() => setIsSettingsOpen(false)}
         />
       )}
     </div>

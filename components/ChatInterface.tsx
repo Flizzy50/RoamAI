@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { GoogleGenAI } from "@google/genai";
-import { Message } from '../App';
+/* Fix: Import Message from types.ts instead of App.tsx */
+import { Message } from '../types';
 
 interface GroundingChunk {
   web?: {
@@ -277,6 +278,25 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               : 'bg-white text-zinc-800 border border-zinc-100 rounded-2xl rounded-bl-none'
             }`}>
               <p className="text-sm leading-relaxed whitespace-pre-wrap font-medium">{msg.text}</p>
+              {/* Added links display for grounding */}
+              {msg.links && msg.links.length > 0 && (
+                <div className="mt-3 pt-2 border-t border-zinc-100 flex flex-col gap-1.5">
+                  <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Sources</p>
+                  <div className="flex flex-wrap gap-2">
+                    {msg.links.map((link, idx) => (
+                      <a 
+                        key={idx} 
+                        href={link.url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-[10px] bg-zinc-50 border border-zinc-100 hover:bg-zinc-100 px-2 py-1 rounded-md text-blue-600 font-bold transition-colors truncate max-w-[150px]"
+                      >
+                        {link.title}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         ))}

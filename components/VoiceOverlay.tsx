@@ -15,11 +15,11 @@ const VoiceOverlay: React.FC<VoiceOverlayProps> = ({ onComplete, onCancel }) => 
   const streamRef = useRef<MediaStream | null>(null);
 
   // Helper: Encode to Base64 (as per GenAI SDK rules)
-  function encode(bytes: Uint8Array) {
+  function encode(base64: Uint8Array) {
     let binary = '';
-    const len = bytes.byteLength;
+    const len = base64.byteLength;
     for (let i = 0; i < len; i++) {
-      binary += String.fromCharCode(bytes[i]);
+      binary += String.fromCharCode(base64[i]);
     }
     return btoa(binary);
   }
@@ -53,7 +53,8 @@ const VoiceOverlay: React.FC<VoiceOverlayProps> = ({ onComplete, onCancel }) => 
         streamRef.current = stream;
 
         const sessionPromise = ai.live.connect({
-          model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+          /* Fix: Using recommended model for real-time conversation task */
+          model: 'gemini-2.5-flash-native-audio-preview-12-2025',
           callbacks: {
             onopen: () => {
               if (!isMounted) return;
