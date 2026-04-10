@@ -28,10 +28,7 @@ const MapDisplay: React.FC<MapDisplayProps> = ({ coords, onPOISelect, isDiscover
     
     setSelectedPoint({ x, y });
 
-    // In a real app, we'd calculate lat/lng from the map center + offset.
-    // For this prototype, we'll notify the parent to trigger the AI "Identification"
     if (onPOISelect && fixedCoords) {
-      // Mocking a slight offset for demonstration
       onPOISelect({
         name: "Identifying Place...",
         lat: fixedCoords.lat + (Math.random() - 0.5) * 0.01,
@@ -42,7 +39,7 @@ const MapDisplay: React.FC<MapDisplayProps> = ({ coords, onPOISelect, isDiscover
   };
 
   return (
-    <div className="px-6 flex-1 w-full max-h-[50vh] min-h-[320px] relative">
+    <div className="px-6 flex-none w-full max-h-[36vh] min-h-[260px] relative">
       <style>
         {`
           @keyframes map-breathing {
@@ -79,8 +76,8 @@ const MapDisplay: React.FC<MapDisplayProps> = ({ coords, onPOISelect, isDiscover
         
         {fixedCoords ? (
           <div className="relative w-full h-full">
-            {/* The Iframe */}
-            <div className={`absolute inset-[-60px] w-[calc(100%+120px)] h-[calc(100%+120px)] transition-opacity duration-300 ${isDiscoveryMode ? 'opacity-60 grayscale' : 'opacity-100'}`}>
+            {/* The Iframe - Aggressive cropping of Google Maps UI elements */}
+            <div className={`absolute top-[-220px] left-[-220px] w-[calc(100%+440px)] h-[calc(100%+440px)] transition-opacity duration-300 ${isDiscoveryMode ? 'opacity-60 grayscale' : 'opacity-100'}`}>
               <iframe
                 title="Real-time Location"
                 width="100%"
@@ -96,7 +93,6 @@ const MapDisplay: React.FC<MapDisplayProps> = ({ coords, onPOISelect, isDiscover
               ></iframe>
             </div>
 
-            {/* INTERACTION SHIELDS */}
             {!isDiscoveryMode && (
               <>
                 <div className="map-ui-shield top-0 left-0 right-0 h-16"></div>
@@ -106,15 +102,12 @@ const MapDisplay: React.FC<MapDisplayProps> = ({ coords, onPOISelect, isDiscover
               </>
             )}
 
-            {/* SELECTION OVERLAY (Discovery Mode Only) */}
             {isDiscoveryMode && (
               <div className="absolute inset-0 pointer-events-none z-30 flex items-center justify-center">
-                {/* Visual Target Reticle */}
                 <div className="w-12 h-12 border border-blue-500/30 rounded-full flex items-center justify-center">
                   <div className="w-1 h-1 bg-blue-500 rounded-full"></div>
                 </div>
                 
-                {/* Active Selection Pin */}
                 {selectedPoint && (
                   <div 
                     className="absolute z-50 transition-all duration-300 ease-out"
@@ -135,10 +128,8 @@ const MapDisplay: React.FC<MapDisplayProps> = ({ coords, onPOISelect, isDiscover
           </div>
         )}
 
-        {/* Global Glass Finish Overlay */}
         <div className="absolute inset-0 pointer-events-none bg-gradient-to-tr from-blue-500/5 to-transparent border-[6px] border-white/40 rounded-[2.5rem]"></div>
 
-        {/* Floating Controls */}
         <div className="absolute top-6 left-6 z-30 flex flex-col gap-2">
           <button 
             onClick={() => setIsDiscoveryMode(!isDiscoveryMode)}

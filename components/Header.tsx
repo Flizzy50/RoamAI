@@ -5,9 +5,10 @@ import { UserProfile, LocationData } from '../types';
 interface HeaderProps {
   user: UserProfile;
   location: LocationData & { isLocating?: boolean; error?: string | null };
+  onProfileClick?: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ user, location }) => {
+const Header: React.FC<HeaderProps> = ({ user, location, onProfileClick }) => {
   const isLive = !location.isLocating && !location.error;
 
   return (
@@ -55,8 +56,11 @@ const Header: React.FC<HeaderProps> = ({ user, location }) => {
         </div>
       </div>
       
-      <div className="relative group">
-        <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-white shadow-sm ring-1 ring-zinc-100 transition-transform group-active:scale-90">
+      <button 
+        onClick={onProfileClick}
+        className="relative group focus:outline-none"
+      >
+        <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-white shadow-sm ring-1 ring-zinc-100 transition-transform active:scale-90">
           <img 
             src={user.avatarUrl || 'https://picsum.photos/seed/roamai/100/100'} 
             alt="Profile" 
@@ -66,7 +70,7 @@ const Header: React.FC<HeaderProps> = ({ user, location }) => {
         <div className={`absolute bottom-0.5 right-0.5 w-3.5 h-3.5 border-2 border-white rounded-full transition-colors duration-500 ${
           user.status === 'online' || user.status === 'exploring' ? 'bg-green-500' : 'bg-zinc-300'
         }`}></div>
-      </div>
+      </button>
     </header>
   );
 };
